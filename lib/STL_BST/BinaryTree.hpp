@@ -1,6 +1,7 @@
 #pragma once
 #include "iostream"
 #include "optional"
+#include "functional"
 
 
 enum class Tag {
@@ -9,15 +10,23 @@ enum class Tag {
     PostOrder
 };
 
-template <typename T, Tag Order = Tag::PreOrder, typename Allocator = std::allocator<T>, typename Comp = std::less<T>>
+template <typename T, Tag Order = Tag::PreOrder, typename Allocator = std::allocator<T>, typename Compare = std::less<T>>
 class BinaryTree {
-
 public:
-    BinaryTree() {};
+    using value_type = T;
+    using key_compare = Compare;
+    using value_compare = std::function<bool(const value_type&, const value_type&)>;
 
-    BinaryTree(Allocator alloc) {
-        alloc_ = std::allocator_traits<decltype(alloc)>::template rebind_alloc<Node>;
-    };
+    BinaryTree(const Allocator& alloc, const Compare& compare = Compare())
+    : alloc_(std::allocator_traits<decltype(alloc)>::template rebind_alloc<Node>)
+    , compare_(compare)
+    , value_compare_(compare)
+    {};
+
+    BinaryTree(const Compare& compare = Compare())
+    : compare_(compare)
+    , value_compare_(compare)
+    {};
 
     BinaryTree(const BinaryTree &other) {
         if (operator!=(other)) {
@@ -37,8 +46,9 @@ public:
         }
     };
 
-    BinaryTree(const BinaryTree &other, Allocator alloc) {
-        alloc_ = std::allocator_traits<decltype(alloc)>::template rebind_alloc<Node>;
+    BinaryTree(const BinaryTree &other, const Allocator& alloc)
+    : alloc_(std::allocator_traits<decltype(alloc)>::template rebind_alloc<Node>)
+    {
         if (operator!=(other)) {
             if (root_ != nullptr) {
                 DeallocateNode(end_);
@@ -55,6 +65,22 @@ public:
             }
         }
     };
+
+    template<typename InputIterator>
+    BinaryTree(InputIterator i, InputIterator j, const Compare& compare = Compare())
+    : compare_(compare)
+    , value_compare_(compare)
+    {
+        if constexpr (std::is_same<typename std::iterator_traits<InputIterator>::value_type, T>::value) {
+            for (; i != j; ++i) {
+                Insert(*i);
+            }
+        }
+    }
+
+    BinaryTree(std::initializer_list<T> il, const Compare& compare = Compare())
+    : BinaryTree(il.begin(), il.end(), compare)
+    {}
 
     ~BinaryTree() {
         DeallocateNode(end_);
@@ -89,14 +115,26 @@ private: //переменные
         Node* parent = nullptr;
         T value;
 
-        Node(const T &value_, Node *parent_, Node* left_ = nullptr, Node* right_ = nullptr) : value(value_), parent(parent_), left(left_), right(right_) {};
+        Node(const T &value_, Node *parent_, Node* left_ = nullptr, Node* right_ = nullptr)
+        : value(value_)
+        , parent(parent_)
+        , left(left_)
+        , right(right_) {};
+        Node(Node* other)
+        : left(other->left)
+        , right(other->right)
+        , parent(other->parent)
+        , value(other->value) {}
         Node() = default;
     };
 
     Node* end_ = nullptr;
     Node* root_ = nullptr;
     Node* begin_ = nullptr;
-    Comp compare_;
+
+
+    Compare compare_;
+    value_compare value_compare_ = compare_;
     std::allocator_traits<Allocator>::template rebind_alloc<Node> alloc_;
 
 public: //Итераторы
@@ -302,13 +340,12 @@ public: //Итераторы
     };
 
 
-public: //итераторы
     using iterator = Iterator<false>;
     using const_iterator = Iterator<true>;
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-//Container Requirements
+public: //Container Requirements
     iterator begin() const{
         return iterator(begin_);
     };
@@ -320,6 +357,7 @@ public: //итераторы
     const_iterator cend() const {
         return const_iterator(end_);
     };
+
     const_iterator cbegin() const {
         return const_iterator(begin_);
     };
@@ -327,41 +365,119 @@ public: //итераторы
     size_t size() {
         return std::distance(begin(), end());
     };
+
     size_t max_size() {
         return SIZE_MAX;
     };
+
     bool empty() {
         return begin() == end();
     };
+
     bool operator==(const BinaryTree& rhs) {
         return std::equal(begin(), end(), rhs.begin(), rhs.end());
     };
+
     bool operator!=(const BinaryTree& rhs) {
         return !operator==(rhs);
     };
 
-//Reversible Container Requirements
+public: //Reversible Container Requirements
     reverse_iterator rbegin() const {
         return reverse_iterator(end());
     }
+
     reverse_iterator rend() const {
         return reverse_iterator(begin());
     }
+
     const_reverse_iterator crbegin() const {
         return const_reverse_iterator(cend());
     }
+
     const_reverse_iterator crend() const {
         return const_reverse_iterator (cbegin());
     }
-// Allocator Aware Container
+
+
+public: // Allocator Aware Container
     decltype(alloc_) get_allocator() {
         return alloc_;
     }
 
+public: // Associative Container
+    Compare key_comp() {
+        return compare_;
+    }
+
+    value_compare value_comp() {
+        return value_compare_;
+    }
+
+    template<typename InputIterator>
+    void insert(InputIterator i, InputIterator j) {
+        if constexpr (std::is_same<typename std::iterator_traits<InputIterator>::value_type, T>::value) {
+            for (; i != j; ++i) {
+                Insert(*i);
+            }
+        }
+    }
+
+    void insert(std::initializer_list<T> il) {
+        insert(il.begin(), il.end());
+    }
+
+    void insert(const T& key) {
+        Insert(key);
+    }
+
+    void erase(const T& key) {
+        Delete(key);
+    }
+    template<typename InputIterator>
+    void erase(InputIterator i, InputIterator j) {
+        if constexpr (std::is_same<typename std::iterator_traits<InputIterator>::value_type, T>::value) {
+            for (; i != j; ++i) {
+                Delete(*i);
+            }
+        }
+    }
+
+    void clear() {
+        erase(begin(), end());
+    }
+
+    iterator find(const T& k){
+        return std::find(begin(), end(), k);
+    }
+
+    bool contains(const T& k) {
+        return find(k) != end();
+    }
+
+
+
 private: //bst
 
-    Node* CreateNode(const T& key, Node* parent);
-    void DeallocateNode(Node* node);
+    Node* AllocateNode(const T& key, Node* parent) {
+        Node* node = std::allocator_traits<decltype(alloc_)>::allocate(alloc_, 1);
+        std::allocator_traits<decltype(alloc_)>::construct(alloc_, node, Node(key, parent));
+        DefineBegin(node);
+        return node;
+    };
+    void DeallocateNode(Node* node) {
+        if (node != nullptr) {
+            if (node->parent != nullptr && node->parent != end_) {
+                if (node->parent->right == node) {
+                    node->parent->right = nullptr;
+                } else {
+                    node->parent->left = nullptr;
+                }
+            }
+        }
+        std::allocator_traits<decltype(alloc_)>::destroy(alloc_, &node->value);
+        std::allocator_traits<decltype(alloc_)>::deallocate(alloc_, node,1);
+    };
     void DeallocateAllNodes(Node* node) {
         if (node != nullptr) {
             DeallocateNode(node->left);
@@ -369,10 +485,56 @@ private: //bst
             DeallocateNode(node);
         }
     }
-    Node* Minimum (Node* x);
-    Node* Insert (Node* node, const T& key, BinaryTree::Node* parent);
-    Node* Delete (Node* node, const T& key);
-    void PrintAll (Node* rt);
+    Node* Minimum (Node* x) {
+        if (x->left == nullptr) {
+            return x;
+        }
+        return Minimum(x->left);
+    };
+    Node* Insert (Node* node, const T& key, BinaryTree::Node* parent) {
+        if (node == nullptr || node == end_) {
+            Node* temp = AllocateNode(key, parent);
+            node = DefineEnd(node, parent, temp);
+        }
+        else if (compare_(key, node->value)) {
+            node->left = Insert(node->left, key, node);
+        }
+        else if (compare_(node->value, key)) {
+            node->right = Insert(node->right, key, node);
+        }
+        return node;};
+    Node* Delete (Node* node, const T& key) {
+        if (node == nullptr) {
+            return node;
+        }
+        if (compare_(key, node->value)) {
+            node->left = Delete(node->left, key);
+        }
+        else if (compare_(node->value, key)) {
+            node->right = Delete(node->right, key);
+        } else {
+            if (node->left == nullptr) {
+                Node* temp = node->right;
+                if (temp != nullptr) {
+                    temp->parent = node->parent;
+                }
+                DeallocateNode(node);
+                return temp;
+            }
+            else if (node->right == nullptr) {
+                Node* temp = node->left;
+                if (temp != nullptr) {
+                    temp->parent = node->parent;
+                }
+                DeallocateNode(node);
+                return temp;
+            }
+            Node* temp = Minimum(node->right);
+            node->value = temp->value;
+            node->right = Delete(node->right, temp->value);
+        }
+        return node;
+    };
     Node* CopyTree(Node* node, Node* parent, Node* end) {
         if (node == nullptr) {
             return nullptr;
@@ -381,7 +543,7 @@ private: //bst
             parent = CreateEnd(parent);
             return end_;
         } else if (node != end) {
-            Node* temp = CreateNode(node->value, parent);
+            Node* temp = AllocateNode(node->value, parent);
             temp->left = CopyTree(node->left, temp, end);
             temp->right = CopyTree(node->right, temp, end);
             return temp;
@@ -424,7 +586,7 @@ private: //bst
         }
         if (compare_(node->value, begin_->value) && (Order == Tag::InOrder || Order == Tag::PostOrder)) {
             begin_ = node;
-        } else if (Order == Tag::PostOrder && node->parent == begin_ && begin_ != root_) {
+        } else if (Order == Tag::PostOrder && node->parent == begin_) {
             begin_ = node;
         }
     }
@@ -451,133 +613,16 @@ private: //bst
 
 
 
-
-
-public:
     void Insert(const T& key) {
         root_ = Insert(root_, key, nullptr);
     };
     void Delete (const T& key) {
         root_ = Delete(root_, key);
     };
-    void PrintAll () {
-        PrintAll(root_);
-    };
+
+public:
 
 };
-
-
-
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-void BinaryTree<T, Order, Allocator, Comp>::DeallocateNode(BinaryTree::Node* node) {
-    if (node != nullptr) {
-        if (node->parent != nullptr && node->parent != end_) {
-            if (node->parent->right == node) {
-                node->parent->right = nullptr;
-            } else {
-                node->parent->left = nullptr;
-            }
-        }
-    }
-    std::allocator_traits<decltype(alloc_)>::destroy(alloc_, &node->value);
-    std::allocator_traits<decltype(alloc_)>::deallocate(alloc_, node,1);
-}
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-BinaryTree<T, Order, Allocator, Comp>::Node* BinaryTree<T, Order, Allocator, Comp>::CreateNode(const T& key, BinaryTree::Node* parent) {
-    Node* node = std::allocator_traits<decltype(alloc_)>::allocate(alloc_, 1);
-    std::allocator_traits<decltype(alloc_)>::construct(alloc_, node, Node(key, parent));
-    DefineBegin(node);
-    return node;
-}
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-BinaryTree<T, Order, Allocator, Comp>::Node* BinaryTree<T, Order, Allocator, Comp>::Delete(BinaryTree::Node* node, const T& key) {
-    if (node == nullptr) {
-        return node;
-    }
-    if (compare_(key, node->value)) {
-        node->left = Delete(node->left, key);
-    }
-    else if (compare_(node->value, key)) {
-        node->right = Delete(node->right, key);
-    } else {
-        if (node->left == nullptr) {
-            Node* temp = node->right;
-            if (temp != nullptr) {
-                temp->parent = node->parent;
-            }
-            DeallocateNode(node);
-            return temp;
-        }
-        else if (node->right == nullptr) {
-            Node* temp = node->left;
-            if (temp != nullptr) {
-                temp->parent = node->parent;
-            }
-            DeallocateNode(node);
-            return temp;
-        }
-        Node* temp = Minimum(node->right);
-        node->value = temp->value;
-        node->right = Delete(node->right, temp->value);
-    }
-    return node;
-}
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-BinaryTree<T, Order, Allocator, Comp>::Node* BinaryTree<T, Order, Allocator, Comp>::Insert(BinaryTree::Node* node, const T& key, BinaryTree::Node* parent) {
-    if (node == nullptr || node == end_) {
-        Node* temp = CreateNode(key, parent);
-        node = DefineEnd(node, parent, temp);
-
-    }
-    else if (compare_(key, node->value)) {
-        node->left = Insert(node->left, key, node);
-    }
-    else if (compare_(node->value, key)) {
-        node->right = Insert(node->right, key, node);
-    }
-    return node;
-}
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-BinaryTree<T, Order, Allocator, Comp>::Node* BinaryTree<T, Order, Allocator, Comp>::Minimum(BinaryTree::Node* x) {
-    if (x->left == nullptr) {
-        return x;
-    }
-    return Minimum(x->left);
-}
-
-
-template<typename T, Tag Order, typename Allocator, typename Comp>
-void BinaryTree<T, Order, Allocator, Comp>::PrintAll(BinaryTree::Node* rt) {
-    if (Order == Tag::PreOrder) {
-        if (rt != nullptr) {
-            std::cout << rt->value << ' ';
-            PrintAll(rt->left);
-            PrintAll(rt->right);
-        }
-    }
-    else if (Order == Tag::InOrder) {
-        if (rt != nullptr) {
-            PrintAll(rt->left);
-            std::cout << rt->value << ' ';
-            PrintAll(rt->right);
-        }
-    }
-    else if (Order == Tag::PostOrder) {
-        if (rt != nullptr) {
-            PrintAll(rt->left);
-            PrintAll(rt->right);
-            std::cout << rt->value << ' ';
-        }
-    }
-
-}
-
-
 
 
 
