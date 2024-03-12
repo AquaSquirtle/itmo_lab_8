@@ -434,6 +434,7 @@ public: // Associative Container
     void erase(const T& key) {
         Delete(key);
     }
+
     template<typename InputIterator>
     void erase(InputIterator i, InputIterator j) {
         if constexpr (std::is_same<typename std::iterator_traits<InputIterator>::value_type, T>::value) {
@@ -441,10 +442,14 @@ public: // Associative Container
                 Delete(*i);
             }
         }
+        std::cout << '\n';
     }
 
     void clear() {
         erase(begin(), end());
+        root_ = nullptr;
+        begin_ = nullptr;
+        end_ = nullptr;
     }
 
     iterator find(const T& k){
@@ -462,9 +467,9 @@ private: //bst
     Node* AllocateNode(const T& key, Node* parent) {
         Node* node = std::allocator_traits<decltype(alloc_)>::allocate(alloc_, 1);
         std::allocator_traits<decltype(alloc_)>::construct(alloc_, node, Node(key, parent));
-        DefineBegin(node);
         return node;
     };
+
     void DeallocateNode(Node* node) {
         if (node != nullptr) {
             if (node->parent != nullptr && node->parent != end_) {
@@ -478,6 +483,7 @@ private: //bst
         std::allocator_traits<decltype(alloc_)>::destroy(alloc_, &node->value);
         std::allocator_traits<decltype(alloc_)>::deallocate(alloc_, node,1);
     };
+
     void DeallocateAllNodes(Node* node) {
         if (node != nullptr) {
             DeallocateNode(node->left);
@@ -485,15 +491,18 @@ private: //bst
             DeallocateNode(node);
         }
     }
+
     Node* Minimum (Node* x) {
         if (x->left == nullptr) {
             return x;
         }
         return Minimum(x->left);
     };
-    Node* Insert (Node* node, const T& key, BinaryTree::Node* parent) {
+
+    Node* Insert (Node* node, const T& key, Node* parent) {
         if (node == nullptr || node == end_) {
             Node* temp = AllocateNode(key, parent);
+            DefineBegin(temp);
             node = DefineEnd(node, parent, temp);
         }
         else if (compare_(key, node->value)) {
@@ -503,6 +512,7 @@ private: //bst
             node->right = Insert(node->right, key, node);
         }
         return node;};
+
     Node* Delete (Node* node, const T& key) {
         if (node == nullptr) {
             return node;
@@ -535,6 +545,7 @@ private: //bst
         }
         return node;
     };
+
     Node* CopyTree(Node* node, Node* parent, Node* end) {
         if (node == nullptr) {
             return nullptr;
@@ -580,6 +591,7 @@ private: //bst
         }
         return node;
     }
+
     void DefineBegin(Node* node) {
         if (begin_ == nullptr) {
             begin_ = node;
@@ -590,6 +602,7 @@ private: //bst
             begin_ = node;
         }
     }
+
     Node* CreateEnd(Node* node) {
         end_ = std::allocator_traits<decltype(alloc_)>::allocate(alloc_, 1);
         std::allocator_traits<decltype(alloc_)>::construct(alloc_, end_, Node());
@@ -597,12 +610,14 @@ private: //bst
         node->right = end_;
         return node;
     };
+
     Node* RebindEnd(Node* node, Node* parent) {
         end_->parent = node;
         node->right = end_;
         parent->right = node;
         return node;
     }
+
     Node* CreateEndPost(Node* node) {
         end_ = std::allocator_traits<decltype(alloc_)>::allocate(alloc_, 1);
         std::allocator_traits<decltype(alloc_)>::construct(alloc_, end_, Node());
@@ -611,8 +626,6 @@ private: //bst
         return node;
     }
 
-
-
     void Insert(const T& key) {
         root_ = Insert(root_, key, nullptr);
     };
@@ -620,7 +633,6 @@ private: //bst
         root_ = Delete(root_, key);
     };
 
-public:
 
 };
 
